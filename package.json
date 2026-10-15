@@ -1,22 +1,47 @@
 {
   "name": "style-up",
   "version": "1.0.0",
-  "main": "index.ts",
+  "main": "expo-router/entry",
   "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
+    "@hono/node-server": "^2.1.5",
     "expo": "~57.0.29",
+    "expo-camera": "~57.0.6",
+    "expo-constants": "~57.0.22",
+    "expo-file-system": "~57.0.7",
+    "expo-image": "~57.0.5",
+    "expo-image-manipulator": "~57.0.21",
+    "expo-image-picker": "~57.0.20",
+    "expo-linking": "~57.0.13",
+    "expo-router": "~57.0.27",
+    "expo-sqlite": "~57.0.4",
     "expo-status-bar": "~57.0.1",
+    "hono": "^4.13.13",
     "react": "19.2.3",
-    "react-native": "0.86.3"
+    "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~57.0.2",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "proxy": "node --env-file-if-exists=.env --import tsx proxy/src/server.ts",
+    "lint": "expo lint"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "react-dom": "19.2.3"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
 }

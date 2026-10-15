@@ -3,6 +3,7 @@
     "name": "style-up",
     "slug": "style-up",
     "version": "1.0.0",
+    "scheme": "styleup",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -19,7 +20,28 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-image",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow StyleUp to photograph your outfits."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow StyleUp to access your photos to score outfits."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
     }
   }
 }
