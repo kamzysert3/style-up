@@ -7,6 +7,7 @@ import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -16,7 +17,8 @@ import { useSQLiteContext } from 'expo-sqlite';
 
 import { PrimaryButton, SecondaryButton } from '@/components/ui';
 import { insertOutfit } from '@/lib/db';
-import { preparePhoto, type PreparedPhoto } from '@/lib/image';
+import { deletePhoto, preparePhoto, type PreparedPhoto } from '@/lib/image';
+import { DEFAULT_OCCASION, OCCASIONS, type Occasion } from '@/lib/occasion';
 import { requestScore, ScoringError } from '@/lib/scoring';
 import { colors, radius, spacing, type } from '@/theme';
 
@@ -35,6 +37,8 @@ export default function CaptureScreen() {
   const [photo, setPhoto] = useState<PreparedPhoto | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [errorNeedsSettings, setErrorNeedsSettings] = useState(false);
+  // Kept across retakes: several shots in a row are usually for the same occasion.
+  const [occasion, setOccasion] = useState<Occasion>(DEFAULT_OCCASION);
 
   async function toPreview(uri: string) {
     setPhase('preparing');
@@ -78,8 +82,8 @@ export default function CaptureScreen() {
     if (!photo) return;
     setPhase('scoring');
     try {
-      const result = await requestScore(photo.base64);
-      const id = await insertOutfit(db, photo.displayUri, result);
+      const result = await requestScore(photo.base64, occasion);
+      const id = await insertOutfit(db, photo.displayUri, result, occasion);
       setPhoto(null);
       setPhase('camera');
       router.replace({ pathname: '/score', params: { id: String(id) } });
@@ -96,6 +100,7 @@ export default function CaptureScreen() {
   }
 
   function retake() {
+    if (photo) deletePhoto(photo.displayUri); // never scored, so nothing else points at it
     setPhoto(null);
     setPhase('camera');
   }
@@ -167,6 +172,39 @@ export default function CaptureScreen() {
             </>
           ) : (
             <>
+              <View style={styles.occasionBlock}>
+                <Text style={styles.occasionHeading}>Dressing for</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  accessibilityRole="radiogroup"
+                  style={styles.occasionScroll}
+                  contentContainerStyle={styles.occasionRow}
+                >
+                  {OCCASIONS.map(({ id, label }) => {
+                    const selected = id === occasion;
+                    return (
+                      <Pressable
+                        key={id}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected, disabled: scoring }}
+                        disabled={scoring}
+                        onPress={() => setOccasion(id)}
+                        style={({ pressed }) => [
+                          styles.chip,
+                          selected && styles.chipSelected,
+                          pressed && { opacity: 0.8 },
+                          scoring && { opacity: 0.5 },
+                        ]}
+                      >
+                        <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]}>
+                          {label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
               <PrimaryButton
                 label="Score this outfit"
                 onPress={() => void score()}
@@ -423,6 +461,37 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   previewRow: { flexDirection: 'row', gap: spacing.md },
+
+  occasionBlock: { gap: spacing.sm },
+  occasionHeading: {
+    ...type.caption,
+    color: colors.inkMuted,
+  },
+  // Bleed to the screen edges so chips scroll under the gutter instead of clipping at it.
+  occasionScroll: { marginHorizontal: -spacing.xl },
+  occasionRow: {
+    paddingHorizontal: spacing.xl,
+    gap: spacing.sm,
+  },
+  chip: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: StyleSheet.hairlineWidth * 2,
+    borderColor: colors.border,
+  },
+  chipSelected: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  chipLabel: {
+    ...type.label,
+    fontWeight: '600',
+    color: colors.ink,
+  },
+  chipLabelSelected: { color: colors.accentInk },
 
   errorText: {
     ...type.body,

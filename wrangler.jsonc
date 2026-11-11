@@ -1,0 +1,23 @@
+{
+  // Cloudflare Worker for the scoring proxy. Secrets are not set here:
+  //   npx wrangler secret put GEMINI_API_KEY
+  //   npx wrangler secret put PROXY_TOKEN
+  "name": "styleup-proxy",
+  "main": "proxy/src/worker.ts",
+  "compatibility_date": "2026-11-01",
+  // nodejs_compat fills process.env from the Worker's secrets and vars,
+  // which is where the proxy reads its configuration.
+  "compatibility_flags": ["nodejs_compat"],
+  // Serve on https://styleup-proxy.<subdomain>.workers.dev, and nowhere else:
+  // preview URLs would be extra public addresses for every uploaded version.
+  "workers_dev": true,
+  "preview_urls": false,
+  // Non-secret overrides, if you want them:
+  // "vars": { "GEMINI_MODEL": "gemini-3.8-flash", "GEMINI_SAMPLES": "1" }
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    }
+  }
+}

@@ -3,7 +3,13 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton, TopBar } from '@/components/ui';
-import { getProxyUrl, setProxyUrl, testConnection } from '@/lib/settings';
+import {
+  getProxyToken,
+  getProxyUrl,
+  setProxyToken,
+  setProxyUrl,
+  testConnection,
+} from '@/lib/settings';
 import { colors, radius, spacing, type } from '@/theme';
 
 type Status =
@@ -17,14 +23,20 @@ export default function SettingsScreen() {
   const [url, setUrl] = useState('');
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
 
+  const [token, setToken] = useState('');
+
   useEffect(() => {
-    void (async () => setUrl(await getProxyUrl()))();
+    void (async () => {
+      setUrl(await getProxyUrl());
+      setToken(await getProxyToken());
+    })();
   }, []);
 
   async function saveAndTest() {
     setStatus({ kind: 'testing' });
     await setProxyUrl(url);
-    const result = await testConnection(url);
+    await setProxyToken(token);
+    const result = await testConnection(url, token);
     setStatus(
       result.ok ? { kind: 'ok', model: result.model } : { kind: 'err', message: result.error },
     );
@@ -60,6 +72,20 @@ export default function SettingsScreen() {
             autoCorrect={false}
             keyboardType="url"
             inputMode="url"
+            style={styles.input}
+          />
+          <TextInput
+            value={token}
+            onChangeText={(next) => {
+              setToken(next);
+              setStatus({ kind: 'idle' });
+            }}
+            placeholder="Access token (only if the server sets PROXY_TOKEN)"
+            placeholderTextColor={colors.inkMuted}
+            accessibilityLabel="Access token"
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
             style={styles.input}
           />
           <PrimaryButton

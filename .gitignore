@@ -43,3 +43,13 @@ yarn-error.*
 # local secrets
 .env
 .env.local
+.dev.vars*
+
+# Cloudflare Workers (wrangler) local state
+.wrangler/
+
+# downloaded model weights (Qwen3-VL notebook proxy)
+proxy/models/
+
+# jupyter
+.ipynb_checkpoints/

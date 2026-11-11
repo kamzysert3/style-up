@@ -1,4 +1,5 @@
-import { getProxyUrl } from './settings';
+import type { Occasion } from './occasion';
+import { authHeaders, getProxyToken, getProxyUrl } from './settings';
 import { fetchWithTimeout, isTimeoutError } from './timeout';
 
 export interface SubScores {
@@ -17,6 +18,8 @@ export interface ScoreResult {
   summary: string;
   /** Which model produced the score — matters when a fallback answered. */
   model?: string;
+  /** True when a fallback model answered; its scale can differ from the primary's. */
+  fallback?: boolean;
 }
 
 export type ScoringErrorKind = 'network' | 'server' | 'response';
@@ -46,12 +49,13 @@ function assertResult(data: unknown): ScoreResult {
     improvements: Array.isArray(obj.improvements) ? (obj.improvements as string[]) : [],
     summary: typeof obj.summary === 'string' ? obj.summary : '',
     model: typeof obj.model === 'string' ? obj.model : undefined,
+    fallback: obj.fallback === true,
   };
 }
 
-/** POST the photo to the proxy and return the validated score. */
-export async function requestScore(imageBase64: string): Promise<ScoreResult> {
-  const base = await getProxyUrl();
+/** POST the photo to the proxy and return the validated score for that occasion. */
+export async function requestScore(imageBase64: string, occasion: Occasion): Promise<ScoreResult> {
+  const [base, token] = await Promise.all([getProxyUrl(), getProxyToken()]);
 
   let response: Response;
   try {
@@ -59,8 +63,8 @@ export async function requestScore(imageBase64: string): Promise<ScoreResult> {
       `${base}/score`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imageBase64, mimeType: 'image/jpeg' }),
+        headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
+        body: JSON.stringify({ image: imageBase64, mimeType: 'image/jpeg', occasion }),
       },
       90_000,
     );

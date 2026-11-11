@@ -17,8 +17,91 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { PrimaryButton, SecondaryButton, TopBar } from '@/components/ui';
-import { deleteOutfit, getOutfit, type OutfitRecord } from '@/lib/db';
-import { colors, spacing, type, scoreBandLabel, scoreColor } from '@/theme';
+import { AGREEMENT_TOLERANCE, isAgreement } from '@/lib/calibration';
+import { deleteOutfit, getOutfit, setUserScore, type OutfitRecord } from '@/lib/db';
+import { occasionLabel } from '@/lib/occasion';
+import { colors, radius, spacing, type, scoreBandLabel, scoreColor } from '@/theme';
+
+const STEPS = [-5, -1, 1, 5] as const;
+
+/**
+ * Calibration input: the user's own 0-100 score for this outfit. Starts on the
+ * model's number so agreeing is one tap and disagreeing is a few.
+ */
+function UserScoreSection({
+  modelScore,
+  saved,
+  onSave,
+}: {
+  modelScore: number;
+  saved: number | null;
+  onSave: (value: number | null) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(saved ?? modelScore);
+  const dirty = draft !== saved;
+
+  let verdict = 'Not rated yet. Your number is what the scale gets calibrated against.';
+  if (saved !== null) {
+    const gap = Math.abs(modelScore - saved);
+    verdict = isAgreement(modelScore, saved)
+      ? `You gave it ${saved}. The model is within ±${AGREEMENT_TOLERANCE}, so this one agrees.`
+      : `You gave it ${saved}. The model is off by ${gap}, so this one disagrees.`;
+  }
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionHeading}>Your score</Text>
+      <View style={styles.stepperRow}>
+        {STEPS.slice(0, 2).map((step) => (
+          <StepButton key={step} step={step} onPress={() => setDraft((d) => clampScore(d + step))} />
+        ))}
+        <Text
+          style={[styles.draftValue, dirty && { color: colors.inkMuted }]}
+          accessibilityLabel={`Your score: ${draft}${dirty ? ', not saved' : ''}`}
+        >
+          {draft}
+        </Text>
+        {STEPS.slice(2).map((step) => (
+          <StepButton key={step} step={step} onPress={() => setDraft((d) => clampScore(d + step))} />
+        ))}
+      </View>
+      <Text style={styles.caption}>{verdict}</Text>
+      {dirty ? (
+        <SecondaryButton
+          label={saved === null ? 'Save my score' : 'Update my score'}
+          onPress={() => void onSave(draft)}
+        />
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          hitSlop={12}
+          onPress={() => void onSave(null)}
+          style={({ pressed }) => [styles.clearButton, pressed && { opacity: 0.6 }]}
+        >
+          <Text style={styles.clearLabel}>Clear my score</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+function clampScore(value: number): number {
+  return Math.max(0, Math.min(100, value));
+}
+
+function StepButton({ step, onPress }: { step: number; onPress: () => void }) {
+  const amount = Math.abs(step);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={step < 0 ? `Lower by ${amount}` : `Raise by ${amount}`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.stepButton, pressed && { opacity: 0.7 }]}
+    >
+      <Text style={styles.stepLabel}>{step < 0 ? `−${amount}` : `+${amount}`}</Text>
+    </Pressable>
+  );
+}
 
 const SUBSCORE_LABELS: { key: keyof OutfitRecord['subscores']; label: string }[] = [
   { key: 'fit_silhouette', label: 'Fit & silhouette' },
@@ -82,6 +165,15 @@ export default function ScoreScreen() {
       },
     ]);
   }, [record, db, router]);
+
+  const saveUserScore = useCallback(
+    async (value: number | null) => {
+      if (!record) return;
+      await setUserScore(db, record.id, value);
+      setRecord({ ...record, userScore: value });
+    },
+    [record, db],
+  );
 
   if (missing) {
     return (
@@ -150,12 +242,19 @@ export default function ScoreScreen() {
             </Text>
             <View style={styles.scoreMeta}>
               <Text style={styles.scoreBand}>{scoreBandLabel(record.score)}</Text>
-              <Text style={styles.caption}>out of 100 · {dateLabel}</Text>
+              <Text style={styles.caption}>
+                out of 100 · {occasionLabel(record.occasion)} · {dateLabel}
+              </Text>
             </View>
           </View>
           {record.summary ? <Text style={styles.summary}>{record.summary}</Text> : null}
           {record.model ? (
-            <Text style={styles.provenance}>Scored by {record.model}</Text>
+            <Text style={styles.provenance}>
+              Scored by {record.model}
+              {record.fallback
+                ? ', a fallback model. Its scale can differ from your usual one.'
+                : ''}
+            </Text>
           ) : null}
         </View>
 
@@ -220,6 +319,14 @@ export default function ScoreScreen() {
             ))}
           </View>
         ) : null}
+
+        {/* ---- calibration: the user's own score ---- */}
+        <UserScoreSection
+          key={record.id}
+          modelScore={record.score}
+          saved={record.userScore}
+          onSave={saveUserScore}
+        />
 
         {/* ---- actions ---- */}
         <View style={styles.actions}>
@@ -345,6 +452,48 @@ const styles = StyleSheet.create({
     ...type.body,
     color: colors.ink,
     flex: 1,
+  },
+
+  stepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  stepButton: {
+    width: 52,
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: StyleSheet.hairlineWidth * 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepLabel: {
+    ...type.body,
+    fontWeight: '600',
+    color: colors.ink,
+  },
+  draftValue: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 40,
+    lineHeight: 48,
+    fontWeight: '800',
+    letterSpacing: -1,
+    color: colors.ink,
+    fontVariant: ['tabular-nums'],
+  },
+  clearButton: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  clearLabel: {
+    ...type.label,
+    color: colors.inkMuted,
+    textDecorationLine: 'underline',
   },
 
   actions: {

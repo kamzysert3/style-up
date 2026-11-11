@@ -33,7 +33,7 @@ async function blobUriToBase64(uri: string): Promise<string> {
 }
 
 /**
- * Resize to <=1024px longest edge, compress to JPEG, persist a permanent
+ * Shrink to <=1024px on the longest edge, compress to JPEG, persist a permanent
  * copy under documents/outfits/, and return base64 for scoring.
  */
 export async function preparePhoto(uri: string): Promise<PreparedPhoto> {
@@ -43,17 +43,78 @@ export async function preparePhoto(uri: string): Promise<PreparedPhoto> {
     return { displayUri: uri, base64 };
   }
 
-  const context = ImageManipulator.manipulate(uri);
-  context.resize({ width: MAX_EDGE, height: null });
-  const rendered = await context.renderAsync();
+  // Render once to learn the real (orientation-applied) size, then shrink the
+  // longest edge only — never the short one, and never upscale a small photo.
+  let rendered = await ImageManipulator.manipulate(uri).renderAsync();
+  if (Math.max(rendered.width, rendered.height) > MAX_EDGE) {
+    const context = ImageManipulator.manipulate(rendered);
+    context.resize(
+      rendered.width >= rendered.height ? { width: MAX_EDGE } : { height: MAX_EDGE },
+    );
+    rendered = await context.renderAsync();
+  }
   const saved = await rendered.saveAsync({ compress: JPEG_QUALITY, format: SaveFormat.JPEG });
 
-  const dir = new Directory(Paths.document, 'outfits');
+  const dir = outfitsDir();
   if (!dir.exists) dir.create({ intermediates: true });
 
   const dest = new File(dir, `${Date.now()}.jpg`);
   if (dest.exists) dest.delete();
-  await new File(saved.uri).copy(dest);
+  const temp = new File(saved.uri);
+  await temp.copy(dest);
+  try {
+    temp.delete(); // the manipulator's cache copy is no longer needed
+  } catch {
+    // the OS clears the cache directory on its own
+  }
 
   return { displayUri: dest.uri, base64: await dest.base64() };
+}
+
+function outfitsDir(): Directory {
+  return new Directory(Paths.document, 'outfits');
+}
+
+function baseName(uri: string): string {
+  return uri.slice(uri.lastIndexOf('/') + 1);
+}
+
+/**
+ * Where a stored photo lives right now. The app's documents path is not stable
+ * (iOS changes it on every update or reinstall), so the saved absolute URI is
+ * only trusted for its file name.
+ */
+export function resolvePhotoUri(storedUri: string): string {
+  if (Platform.OS === 'web') return storedUri;
+  return new File(outfitsDir(), baseName(storedUri)).uri;
+}
+
+/** Delete a persisted photo. Never throws: a leftover file must not block the UI. */
+export function deletePhoto(storedUri: string): void {
+  if (Platform.OS === 'web') return;
+  try {
+    const file = new File(outfitsDir(), baseName(storedUri));
+    if (file.exists) file.delete();
+  } catch {
+    // swept up by pruneOrphanPhotos on the next launch
+  }
+}
+
+/**
+ * Delete photos no history row points at: shots that were abandoned when the
+ * app was closed mid-preview, and leftovers from before deletes removed files.
+ * Run only at startup, before any new photo can be waiting in the preview.
+ */
+export function pruneOrphanPhotos(referencedUris: string[]): void {
+  if (Platform.OS === 'web') return;
+  try {
+    const dir = outfitsDir();
+    if (!dir.exists) return;
+    const keep = new Set(referencedUris.map(baseName));
+    for (const entry of dir.list()) {
+      if (entry instanceof File && !keep.has(entry.name)) entry.delete();
+    }
+  } catch {
+    // best effort; try again next launch
+  }
 }

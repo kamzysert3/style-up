@@ -38,7 +38,8 @@
         {
           "photosPermission": "Allow StyleUp to access your photos to score outfits."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

@@ -20,6 +20,15 @@ Expo app (phone)  ──POST /score {image: base64}──▶  local / Cloudflare
 - The proxy is a small Hono app (`proxy/`) that runs locally on Node and deploys unchanged
   to Cloudflare Workers later.
 
+### All-local alternative: `proxy/styleup-proxy-qwen3vl.ipynb`
+
+Same proxy, no API key and no network: a Jupyter notebook that serves the identical `/health` and
+`/score` API from **Qwen3-VL running locally** on your own GPU, and downloads the weights for you
+into `proxy/models/`. Open it, run the cells top to bottom, and point the app at it exactly as
+below. Use it when you want free, offline, private scoring; use the Node proxy when you want
+hosted-model quality and a Cloudflare deploy. Details, VRAM sizing, and the parity notes are in the
+notebook.
+
 ## Setup
 
 ```bash
@@ -30,7 +39,22 @@ npm run proxy               # starts http://localhost:8787
 
 Optional `.env` overrides: `GEMINI_MODEL` (default `gemini-3.8-flash`),
 `GEMINI_FALLBACK_MODELS` (default `gemini-3.7-flash,gemini-3.5-flash,gemini-3.1-flash-lite`),
-`GEMINI_TIMEOUT_MS` (default 20000), `GEMINI_HEDGE_MS` (default 4000), `PORT` (default 8787).
+`GEMINI_TIMEOUT_MS` (default 20000), `GEMINI_HEDGE_MS` (default 4000), `GEMINI_TEMPERATURE`
+(default 0), `GEMINI_SAMPLES` (default 1), `PORT` (default 8787).
+
+Scores are made as repeatable as the model allows: temperature is 0, and the response is
+schema-constrained so the model describes the outfit and fills the sub-scores before it commits
+to the overall number. Set `GEMINI_SAMPLES=3` to score each photo three times and keep the
+median run (three times the quota). A response with a missing or out-of-range score is never
+patched up with a default: the proxy retries that model once, moves to the next, and otherwise
+returns an error.
+
+**Access token.** Set `PROXY_TOKEN` in `.env` and `/score` only answers requests that carry it
+(`Authorization: Bearer …`); enter the same value in the app under **Settings**. Leave it unset
+only while the proxy is reachable from your own LAN and nowhere else. It is required before
+any public deploy, or anyone with the URL can spend your Gemini quota.
+
+A photo with no outfit in it is refused (`422`) rather than scored as 0.
 
 The free tier's newest Flash models are heavily contested, so `/score` **hedges** across the
 chain: the primary starts, and if it hasn't answered within `GEMINI_HEDGE_MS` — or fails
@@ -38,7 +62,8 @@ outright (503/429) — the next model is launched alongside it. The first valid 
 the losers are aborted. Measured: a saturated primary that used to cost 34–43s now lands in
 ~5s, at the cost of an occasional extra call.
 
-The result screen records which model actually answered (`Scored by …`). Model choice *does*
+The result screen records which model actually answered (`Scored by …`) and says so when it
+was a fallback. Model choice *does*
 move the number — the same photo scored 75/73 on one model and 88 on another — so during
 calibration, pin one model (`GEMINI_MODEL`, empty `GEMINI_FALLBACK_MODELS`) if you want a
 perfectly stable scale, or leave the hedge on for availability and discount the fallback-scored
@@ -62,9 +87,12 @@ Point the app at your proxy the first time you run it:
 
 1. Open the app — the camera is the home screen. Frame the full outfit, head to toe.
 2. Shoot (or tap the gallery icon to use an existing photo).
-3. Tap **Score this outfit**. You'll get a 0–100 score, five subscores, what works, and 2–3
-   concrete improvements.
-4. Every score is saved to **History** (tap the clock icon). Long-press a tile to delete it.
+3. Pick what you're **dressing for** (Everyday, Work, Evening out, Formal, Active) and tap
+   **Score this outfit**. You'll get a 0–100 score for that occasion, five subscores, what
+   works, and 2–3 concrete improvements.
+4. Add **your own score** at the bottom of the result. History then shows how often the model
+   lands within ±5 of you, which is the M1 acceptance number.
+5. Every score is saved to **History** (tap the clock icon). Long-press a tile to delete it.
 
 ## Checks
 
@@ -98,6 +126,7 @@ src/
   theme.ts        Design tokens — colors, spacing, type scale, score bands
 proxy/
   src/            Hono app: /health · /score · rubric prompt · Gemini client
+  styleup-proxy-qwen3vl.ipynb   same API, Qwen3-VL running locally (downloads its own weights)
 ```
 
 Run commands before declaring any task done: `npx tsc --noEmit` and `npx expo lint`.

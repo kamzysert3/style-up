@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { PrimaryButton, TopBar } from '@/components/ui';
+import { AGREEMENT_TOLERANCE, agreementStats, isAgreement } from '@/lib/calibration';
 import { deleteOutfit, listOutfits, type OutfitRecord } from '@/lib/db';
 import { colors, radius, spacing, type, scoreColor } from '@/theme';
 
@@ -45,6 +46,7 @@ export default function HistoryScreen() {
 
   const count = records?.length ?? 0;
   const average = count > 0 ? Math.round(records!.reduce((a, r) => a + r.score, 0) / count) : null;
+  const { rated, agreed } = agreementStats(records ?? []);
 
   return (
     <View style={styles.fill}>
@@ -54,6 +56,13 @@ export default function HistoryScreen() {
         {count > 0 ? (
           <Text style={styles.subtitle}>
             {count} {count === 1 ? 'outfit' : 'outfits'} · average {average}
+          </Text>
+        ) : null}
+        {count > 0 ? (
+          <Text style={styles.subtitle}>
+            {rated > 0
+              ? `Model within ±${AGREEMENT_TOLERANCE} of your score on ${agreed} of ${rated} rated`
+              : 'Open an outfit and add your own score to measure agreement'}
           </Text>
         ) : null}
       </View>
@@ -89,7 +98,10 @@ export default function HistoryScreen() {
           renderItem={({ item }) => (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Outfit scored ${item.score} out of 100`}
+              accessibilityLabel={
+                `Outfit scored ${item.score} out of 100` +
+                (item.userScore !== null ? `, your score ${item.userScore}` : '')
+              }
               onPress={() => router.push({ pathname: '/score', params: { id: String(item.id) } })}
               onLongPress={() => confirmDelete(item)}
               style={({ pressed }) => [styles.tile, pressed && { opacity: 0.85 }]}
@@ -104,6 +116,16 @@ export default function HistoryScreen() {
                 <Text style={[styles.badgeText, { color: scoreColor(item.score) }]}>
                   {item.score}
                 </Text>
+                {item.userScore !== null ? (
+                  <Text
+                    style={[
+                      styles.badgeYou,
+                      !isAgreement(item.score, item.userScore) && { color: colors.accent },
+                    ]}
+                  >
+                    you {item.userScore}
+                  </Text>
+                ) : null}
               </View>
             </Pressable>
           )}
@@ -149,7 +171,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 3,
     minWidth: 40,
-    alignItems: 'center',
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  badgeYou: {
+    ...type.caption,
+    fontWeight: '600',
+    color: colors.inkMuted,
   },
   badgeText: {
     ...type.label,
