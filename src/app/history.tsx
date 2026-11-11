@@ -77,7 +77,7 @@ export default function HistoryScreen() {
           </Text>
           <PrimaryButton
             label="Score an outfit"
-            onPress={() => router.replace('/')}
+            onPress={() => router.dismissTo('/')}
             style={{ alignSelf: 'stretch', marginTop: spacing.lg }}
           />
         </View>

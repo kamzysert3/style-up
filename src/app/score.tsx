@@ -183,7 +183,7 @@ export default function ScoreScreen() {
           <Text style={styles.summary}>This score no longer exists.</Text>
           <PrimaryButton
             label="Back to camera"
-            onPress={() => router.replace('/')}
+            onPress={() => router.dismissTo('/')}
             style={{ marginTop: spacing.lg, alignSelf: 'stretch' }}
           />
         </View>
@@ -330,10 +330,11 @@ export default function ScoreScreen() {
 
         {/* ---- actions ---- */}
         <View style={styles.actions}>
-          <PrimaryButton label="Shoot next outfit" onPress={() => router.replace('/')} />
+          {/* dismissTo pops back to a screen already in the stack instead of piling on copies */}
+          <PrimaryButton label="Shoot next outfit" onPress={() => router.dismissTo('/')} />
           <SecondaryButton
             label="View history"
-            onPress={() => router.replace('/history')}
+            onPress={() => router.dismissTo('/history')}
             style={{ marginTop: spacing.md }}
           />
         </View>

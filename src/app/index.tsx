@@ -2,10 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -86,7 +87,8 @@ export default function CaptureScreen() {
       const id = await insertOutfit(db, photo.displayUri, result, occasion);
       setPhoto(null);
       setPhase('camera');
-      router.replace({ pathname: '/score', params: { id: String(id) } });
+      // push, not replace: the camera stays underneath so back returns to it.
+      router.push({ pathname: '/score', params: { id: String(id) } });
     } catch (err) {
       if (err instanceof ScoringError) {
         setErrorMsg(err.message);
@@ -104,6 +106,23 @@ export default function CaptureScreen() {
     setPhoto(null);
     setPhase('camera');
   }
+
+  // The preview is a state of this screen, not a route, so Android's back button
+  // would otherwise skip it and close the app. Only while this screen is focused.
+  useFocusEffect(
+    useCallback(() => {
+      if (phase === 'camera') return; // nothing to step back to: let back exit
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (phase === 'preview' || phase === 'error') {
+          if (photo) deletePhoto(photo.displayUri);
+          setPhoto(null);
+          setPhase('camera');
+        }
+        return true; // preparing / scoring: stay put until it finishes
+      });
+      return () => subscription.remove();
+    }, [phase, photo]),
+  );
 
   /* ---------- permission gate ---------- */
   if (!permission) {
